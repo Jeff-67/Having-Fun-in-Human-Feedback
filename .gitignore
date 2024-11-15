@@ -1,0 +1,27 @@
+# Ignore Python bytecode files
+*.pyc
+*.pyo
+__pycache__/
+
+# Ignore virtual environment directories
+.venv/
+env/
+
+# Ignore Conda environment files (optional)
+*.conda
+*.env
+
+# Ignore Poetry lock file (optional)
+poetry.lock
+
+# Ignore IDE configurations
+.vscode/
+.idea/
+
+# Ignore system files
+.DS_Store
+Thumbs.db
+
+
+# Ignore .env file
+.env
