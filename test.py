@@ -4,7 +4,7 @@ import psycopg2
 import pandas as pd
 from faicons import icon_svg
 
-from shiny.express import render, ui, input
+from shiny.express import render, ui, input, output
 from shiny import reactive
 load_dotenv()
 
@@ -43,18 +43,15 @@ with ui.layout_column_wrap(fill=False):
             return data().shape[0]
 
     with ui.value_box(showcase=icon_svg("star")):
-        "Average passed responses"
-
-        @render.text
-        def bill_length():
-            return data().shape[0]
+        "Total passed responses"
+        ui.input_text("total_passed_response", "", width="50px")
 
     with ui.value_box(showcase=icon_svg("chart-simple")):
         "Average passing rate"
 
         @render.text
-        def bill_depth():
-            return data().shape[0]
+        def passing_rate():
+            return data()[data()["pass"] == True].shape[0]
 
 
 with ui.layout_columns():
@@ -112,7 +109,7 @@ def handle_actions():
         cursor.execute(stmt, (new_pass_value, data().loc[idx, "input"], data().loc[idx, "output"]))
         status_text = "Passed" if new_pass_value else "Not Passed"
         ui.update_text(id = f"pass_btn_{idx}", label = status_text)
+        ui.update_text(id="total_passed_response", value=data()[data()["pass"] == True].shape[0])
     
     conn.commit()
     conn.close()
-
