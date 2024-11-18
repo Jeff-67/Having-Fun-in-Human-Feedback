@@ -2,8 +2,10 @@ from dotenv import load_dotenv
 import os
 import psycopg2
 import pandas as pd
+from faicons import icon_svg
 
-from shiny import App, render, ui, reactive
+from shiny.express import render, ui, input
+from shiny import reactive
 load_dotenv()
 
 
@@ -21,49 +23,96 @@ def get_db_connection() -> psycopg2.extensions.connection:
         sslmode="disable",
     )
 
-app_ui = ui.page_fluid(
-    ui.h2("Shiny for Python Database Connections"),
+ui.page_opts(title="HF in your LLM application!", fillable=True)
+
+
+with ui.sidebar(title="Table selection"):
     ui.input_select(
-        id="select_data", 
-        label="Selected Data:", 
-        choices=["test_hf_following_questions", "test_hf_title"], 
+        "select_table",
+        "Select Table:",
+        choices=["test_hf_following_questions", "test_hf_title"],
         selected="test_hf_title"
-    ),
-    ui.hr(),
-    ui.output_text(id="out_db_details"),
-    ui.output_table(id="out_table")
-)
+    )
+
+with ui.layout_column_wrap(fill=False):
+    with ui.value_box(showcase=icon_svg("database")):
+        "Number of Data"
+
+        @render.text
+        def count():
+            return data().shape[0]
+
+    with ui.value_box(showcase=icon_svg("star")):
+        "Average passed responses"
+
+        @render.text
+        def bill_length():
+            return data().shape[0]
+
+    with ui.value_box(showcase=icon_svg("chart-simple")):
+        "Average passing rate"
+
+        @render.text
+        def bill_depth():
+            return data().shape[0]
 
 
-def server(input, output, session):
-    @reactive.Calc
-    def db_info():
-        conn = get_db_connection()
-        stmt = "SELECT datname || ' | ' || datid FROM pg_stat_activity WHERE state = 'active';"
-        cursor = conn.cursor()
-        cursor.execute(stmt)
-        res = cursor.fetchall()
-        conn.close()
-        return f"Table: {input.select_data()}"
+with ui.layout_columns():
+    with ui.card(full_screen=True):
+        ui.card_header("LLM application data")
 
-    @reactive.Calc
-    def data():
-        conn = get_db_connection()
-        stmt = f"SELECT input, output, pass, explanation FROM {input.select_data()}"
-        df = pd.read_sql(stmt, con=conn)
-        conn.close()
-        return df
+        @render.data_frame
+        def data_frame():
+            df_display = data().copy(deep=True)
+            df_display["pass"] = [
+                ui.div(
+                    ui.input_switch(f"pass_btn_{i}", "Pass", value=True),
+                    ui.update_text(id = f"pass_btn_{i}", label = "Passed"),
+                )
+                for i in df_display.index
+            ]
+            return render.DataGrid(df_display)
 
 
-    @output
-    @render.text
-    def out_db_details():
-        return f"Current database-> {db_info()}"
+ui.include_css("dashboard/styles.css")
 
-    @output
-    @render.table
-    def out_table():
-        return data()
+@reactive.Calc
+def db_info():
+    conn = get_db_connection()
+    stmt = "SELECT datname || ' | ' || datid FROM pg_stat_activity WHERE state = 'active';"
+    cursor = conn.cursor()
+    cursor.execute(stmt)
+    res = cursor.fetchall()
+    conn.close()
+    return f"Table: {input.select_table()}"
+
+@reactive.Calc
+def data():
+    conn = get_db_connection()
+    stmt = f"SELECT input, output, pass, explanation FROM {input.select_table()}"
+    df = pd.read_sql(stmt, con=conn)
+    conn.close()
+    return df
 
 
-app = App(app_ui, server)
+@reactive.effect
+def handle_actions():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    for idx in data().index:
+        new_pass_value = input[f"pass_btn_{idx}"]()
+        data().loc[idx, "pass"] = new_pass_value
+        
+        stmt = f"""
+            UPDATE {input.select_table()}
+            SET pass = %s
+            WHERE input = %s AND output = %s
+        """
+        cursor.execute(stmt, (new_pass_value, data().loc[idx, "input"], data().loc[idx, "output"]))
+        status_text = "Passed" if new_pass_value else "Not Passed"
+        ui.update_text(id = f"pass_btn_{idx}", label = status_text)
+    
+    conn.commit()
+    conn.close()
+
