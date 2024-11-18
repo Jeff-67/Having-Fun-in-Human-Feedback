@@ -48,10 +48,7 @@ with ui.layout_column_wrap(fill=False):
 
     with ui.value_box(showcase=icon_svg("chart-simple")):
         "Average passing rate"
-
-        @render.text
-        def passing_rate():
-            return data()[data()["pass"] == True].shape[0]
+        ui.input_text("passing_rate", "", width="80px", value="0%")
 
 
 with ui.layout_columns():
@@ -110,6 +107,6 @@ def handle_actions():
         status_text = "Passed" if new_pass_value else "Not Passed"
         ui.update_text(id = f"pass_btn_{idx}", label = status_text)
         ui.update_text(id="total_passed_response", value=data()[data()["pass"] == True].shape[0])
-    
+        ui.update_text(id="passing_rate", value=f"{data()[data()['pass'] == True].shape[0] / data().shape[0] * 100:.1f}%")
     conn.commit()
     conn.close()
