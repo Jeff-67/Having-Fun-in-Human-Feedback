@@ -14,14 +14,20 @@ def get_db_connection() -> psycopg2.extensions.connection:
 
     Returns:
         psycopg2.extensions.connection: Database connection object
+    Raises:
+        psycopg2.Error: If connection fails
     """
-    return psycopg2.connect(
-        user=os.getenv("POSTGRES_USER"),
-        password=os.getenv("POSTGRES_PASSWORD"),
-        host=os.getenv("POSTGRES_HOST"),
-        database=os.getenv("POSTGRES_DB"),
-        sslmode="disable",
-    )
+    try:
+        return psycopg2.connect(
+            user=os.getenv("POSTGRES_USER"),
+            password=os.getenv("POSTGRES_PASSWORD"),
+            host=os.getenv("POSTGRES_HOST"),
+            database=os.getenv("POSTGRES_DB"),
+            sslmode="disable",
+        )
+    except psycopg2.Error as e:
+        print(f"Database connection failed: {e}")
+        raise
 
 ui.page_opts(title="HF in your LLM application!", fillable=True)
 
@@ -58,14 +64,22 @@ with ui.layout_columns():
         @render.data_frame
         def data_frame():
             df_display = data().copy(deep=True)
+            df_display["pass"] = df_display["pass"].map({'true': True, 'false': False})
+            
             df_display["pass"] = [
                 ui.div(
-                    ui.input_switch(f"pass_btn_{i}", "Pass", value=True),
-                    ui.update_text(id = f"pass_btn_{i}", label = "Passed"),
+                    ui.input_switch(f"pass_btn_{i}", "Pass", value=df_display.loc[i, "pass"]),
+                    ui.update_text(id = f"pass_btn_{i}", label = "Passed" if df_display.loc[i, "pass"] else "Not Passed"),
                 )
                 for i in df_display.index
             ]
-            return render.DataGrid(df_display)
+            df_display["explanation"] = [
+                ui.div(
+                    ui.input_text(f"explanation_{i}", "Why it is passed or not?", value=""),
+                )
+                for i in df_display.index
+            ]
+            return render.DataGrid(df_display, editable=True)
 
 
 ui.include_css("dashboard/styles.css")
@@ -91,22 +105,60 @@ def data():
 
 @reactive.effect
 def handle_actions():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    for idx in data().index:
-        new_pass_value = input[f"pass_btn_{idx}"]()
-        data().loc[idx, "pass"] = new_pass_value
+    try:
+        # Check if the data is available and inputs are initialized
+        df = data()
+        if df.empty:
+            return
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
         
-        stmt = f"""
-            UPDATE {input.select_table()}
-            SET pass = %s
-            WHERE input = %s AND output = %s
-        """
-        cursor.execute(stmt, (new_pass_value, data().loc[idx, "input"], data().loc[idx, "output"]))
-        status_text = "Passed" if new_pass_value else "Not Passed"
-        ui.update_text(id = f"pass_btn_{idx}", label = status_text)
-        ui.update_text(id="total_passed_response", value=data()[data()["pass"] == True].shape[0])
-        ui.update_text(id="passing_rate", value=f"{data()[data()['pass'] == True].shape[0] / data().shape[0] * 100:.1f}%")
-    conn.commit()
-    conn.close()
+        updates = []
+        for idx in df.index:
+            try:
+                new_pass_value = input[f"pass_btn_{idx}"]()
+                new_explanation_value = input[f"explanation_{idx}"]()
+            except Exception:
+                continue
+                
+            df.loc[idx, "pass"] = new_pass_value
+            
+            # Only update explanation if there's a new non-empty value
+            if new_explanation_value:
+                df.loc[idx, "explanation"] = new_explanation_value
+                updates.append((new_pass_value, new_explanation_value, 
+                              df.loc[idx, "input"], df.loc[idx, "output"]))
+            else:
+                # Keep the existing explanation value from the database
+                updates.append((new_pass_value, df.loc[idx, "explanation"], 
+                              df.loc[idx, "input"], df.loc[idx, "output"]))
+            
+            status_text = "Passed" if new_pass_value else "Not Passed"
+            ui.update_text(id=f"pass_btn_{idx}", label=status_text)
+
+        # Only proceed with updates if we have data to update
+        if updates:
+            stmt = f"""
+                UPDATE {input.select_table()}
+                SET pass = %s, explanation = %s
+                WHERE input = %s AND output = %s
+            """
+            cursor.executemany(stmt, updates)
+            
+            total_passed = df[df["pass"] == True].shape[0]
+            total_records = df.shape[0]
+            passing_rate = (total_passed / total_records * 100) if total_records > 0 else 0
+            
+            ui.update_text(id="total_passed_response", value=str(total_passed))
+            ui.update_text(id="passing_rate", value=f"{passing_rate:.1f}%")
+
+            conn.commit()
+            
+    except Exception as e:
+        print(f"Error in handle_actions: {e}")
+        if 'conn' in locals():
+            conn.rollback()
+    finally:
+        if 'conn' in locals():
+            conn.close()
