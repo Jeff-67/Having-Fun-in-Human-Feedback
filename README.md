@@ -22,7 +22,7 @@
 Here's a preview of the dynamic dashboard created with this project:
 
 <p align="center">
-    <img src="src/images/dashboar.png" alt="Dashboard Screenshot" width="75%">
+    <img src="./src/images/dashboar.png" alt="Dashboard Screenshot" width="75%">
 </p>
 ##  Table of Contents
 
