@@ -1,3 +1,34 @@
 :root {
   --bslib-sidebar-main-bg: #f8f8f8;
 }
+
+/* Table headers and cells */
+th, td {
+  border: 1px solid #ddd;
+  padding: 8px;
+  text-align: left;
+  vertical-align: top; /* Aligns content to the top for consistency */
+  overflow-wrap: break-word; /* Ensures no overflow */
+  height: 100px; /* Ensures consistent height (adjust as needed) */
+}
+
+/* Ensure consistent box model */
+div {
+  box-sizing: border-box;
+}
+
+/* Alignment for radio buttons and explanation input boxes */
+.pass-radio, .explanation-box {
+  display: flex;
+  align-items: center; /* Centers the content vertically */
+  justify-content: center; /* Centers content horizontally if needed */
+  height: 100%; /* Matches table row height */
+}
+
+/* Optional: Add background color for better readability */
+td {
+  background-color: #f9f9f9;
+}
+th {
+  background-color: #f2f2f2;
+}
